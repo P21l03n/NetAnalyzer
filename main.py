@@ -1,9 +1,194 @@
+import time
 import tkinter as tk
 from tkinter import ttk, messagebox
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import matplotlib
 matplotlib.use('TkAgg')  # Принудительно используем Tkinter-бэкенд
+import os
+import webbrowser
+from pyvis.network import Network
+from tkinter import messagebox
+
+
+class CiscoVisualizer:
+    def __init__(self, devices, connections):
+        """
+        Инициализация визуализатора Cisco-топологии
+
+        :param devices: Список устройств (например, ["Роутер", "Умная колонка"])
+        :param connections: Список соединений в формате
+               [(device1, device2, protocol, bandwidth), ...]
+        """
+        self.devices = devices
+        self.connections = connections
+        self.net = self._initialize_network()
+
+    def _initialize_network(self):
+        """Настройка базовых параметров сети"""
+        return Network(
+            height="800px",
+            width="100%",
+            bgcolor="#f0f0f0",  # Cisco-style background
+            font_color="#333333",
+            directed=False,
+            notebook=False
+        )
+
+    def _get_device_properties(self, device):
+        """Определяем иконки и цвета для разных типов устройств"""
+        device_props = {
+            "роутер": {
+                "image": "https://img.icons8.com/color/48/router.png",
+                "color": "#0066CC",
+                "shape": "image"
+            },
+            "смартфон": {
+                "image": "https://img.icons8.com/color/48/iphone.png",
+                "color": "#33CC33",
+                "shape": "image"
+            },
+            "лампочка": {
+                "image": "https://img.icons8.com/color/48/light-on.png",
+                "color": "#FFCC00",
+                "shape": "image"
+            },
+            "розетка": {
+                "image": "https://img.icons8.com/color/48/electrical.png",
+                "color": "#CC3300",
+                "shape": "image"
+            },
+            "колонка": {
+                "image": "https://img.icons8.com/color/48/speaker.png",
+                "color": "#9933CC",
+                "shape": "image"
+            }
+        }
+
+        for key, props in device_props.items():
+            if key in device.lower():
+                return props
+
+        # Дефолтные значения для неизвестных устройств
+        return {
+            "color": "#666666",
+            "shape": "box"
+        }
+
+    def _add_devices(self):
+        """Добавление устройств с соответствующими иконками"""
+        for device in self.devices:
+            props = self._get_device_properties(device)
+            self.net.add_node(
+                device,
+                shape=props["shape"],
+                image=props.get("image", ""),
+                color=props["color"],
+                size=25,
+                borderWidth=2,
+                font={"size": 12},
+                labelHighlightBold=True
+            )
+
+    def _add_connections(self):
+        """Добавление соединений с подписями"""
+        protocol_styles = {
+            "wi-fi": {"color": "#FF8800", "dashes": False},
+            "zigbee": {"color": "#00CC66", "dashes": [5, 5]},
+            "bluetooth": {"color": "#9966FF", "dashes": [3, 3]},
+            "ethernet": {"color": "#333333", "dashes": False}
+        }
+
+        for src, dst, proto, bw in self.connections:
+            style = protocol_styles.get(proto.lower(), {"color": "#AAAAAA"})
+            self.net.add_edge(
+                src,
+                dst,
+                label=f"{proto.upper()} {bw}Mbps",
+                color=style["color"],
+                width=2,
+                dashes=style.get("dashes", False),
+                font={"size": 10},
+                smooth=False
+            )
+
+    def _configure_physics(self):
+        """Настройка физической модели (аналогично Cisco Packet Tracer)"""
+        self.net.toggle_physics(True)
+        self.net.set_options("""
+        {
+            "physics": {
+                "forceAtlas2Based": {
+                    "gravitationalConstant": -50,
+                    "centralGravity": 0.01,
+                    "springLength": 150,
+                    "damping": 0.4,
+                    "avoidOverlap": 0.8
+                },
+                "minVelocity": 0.75,
+                "solver": "forceAtlas2Based"
+            },
+            "nodes": {
+                "scaling": {
+                    "min": 20,
+                    "max": 30
+                }
+            }
+        }
+        """)
+
+    def generate(self, filename="cisco_topology.html"):
+        """
+        Генерация и отображение топологии
+
+        :param filename: Имя выходного HTML-файла
+        :return: Путь к сохраненному файлу
+        """
+        try:
+            if not self.devices:
+                raise ValueError("Нет устройств для визуализации")
+            if not self.connections:
+                raise ValueError("Нет соединений между устройствами")
+
+            self._add_devices()
+            self._add_connections()
+            self._configure_physics()
+
+            # Очистка предыдущего файла
+            if os.path.exists(filename):
+                os.remove(filename)
+
+            # Сохранение и открытие
+            self.net.show(filename)
+            filepath = os.path.abspath(filename)
+            webbrowser.open(f"file://{filepath}")
+
+            return filepath
+
+        except Exception as e:
+            messagebox.showerror(
+                "Ошибка визуализации",
+                f"Не удалось создать топологию:\n{str(e)}\n\n"
+                "Проверьте:\n"
+                "1. Наличие устройств и соединений\n"
+                "2. Корректность данных\n"
+                "3. Доступ к интернету (для загрузки иконок)"
+            )
+            return None
+
+    def highlight_path(self, path, color="#FF0000", width=5):
+        """
+        Подсветка указанного пути в топологии
+
+        :param path: Список устройств пути (например, ["Роутер", "Смартфон"])
+        :param color: Цвет подсветки
+        :param width: Толщина линии
+        """
+        for i in range(len(path) - 1):
+            edge = f"{path[i]}->{path[i + 1]}"
+            if edge in self.net.edges:
+                self.net.edges[edge]["color"] = color
+                self.net.edges[edge]["width"] = width
 
 class NetworkApp:
     def __init__(self, root):
@@ -74,6 +259,129 @@ class NetworkApp:
         self.canvas = FigureCanvasTkAgg(self.figure, master=self.frame_output)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
+        self._create_cisco_button()
+
+    def _create_cisco_button(self):
+        """Создает кнопку для визуализации Cisco"""
+        style = ttk.Style()
+        style.configure("Cisco.TButton",
+                        foreground="white",
+                        background="#0066CC",
+                        font=('Helvetica', 10, 'bold'),
+                        padding=5)
+
+        self.cisco_btn = ttk.Button(
+            self.frame_input,
+            text="Cisco Visualization",
+            command=self._show_cisco_visualization,
+            style="Cisco.TButton",
+            state="normal"
+        )
+        self.cisco_btn.grid(row=4, column=4, padx=5, pady=5, sticky="ew")
+
+    def _show_cisco_visualization(self):
+        """Генерация Cisco-подобной визуализации с полной обработкой ошибок"""
+        try:
+            # Проверка данных
+            if not hasattr(self, 'devices') or not self.devices:
+                raise ValueError("Не добавлены устройства")
+
+            if not hasattr(self, 'connections') or not self.connections:
+                raise ValueError("Не добавлены соединения")
+
+            # Импорт библиотек (с проверкой)
+            try:
+                from pyvis.network import Network
+            except ImportError:
+                raise ImportError("Библиотека PyVis не установлена. Выполните: pip install pyvis")
+
+            # Подготовка файла
+            output_file = os.path.abspath("cisco_topology.html")
+            temp_file = os.path.abspath("temp_cisco_topology.html")
+
+            # Удаляем старые файлы
+            for filepath in [output_file, temp_file]:
+                if os.path.exists(filepath):
+                    try:
+                        os.remove(filepath)
+                    except Exception as e:
+                        print(f"Ошибка удаления файла {filepath}: {str(e)}")
+
+            # Создаем сеть
+            net = Network(
+                height="800px",
+                width="100%",
+                bgcolor="#f0f0f0",
+                font_color="#333333",
+                notebook=False,
+                cdn_resources="remote"
+            )
+
+            # Добавляем устройства
+            device_types = {
+                "роутер": {"color": "#0066CC", "shape": "box"},
+                "смартфон": {"color": "#33CC33", "shape": "ellipse"},
+                "лампочка": {"color": "#FFCC00", "shape": "circle"},
+                "розетка": {"color": "#CC3300", "shape": "database"},
+                "колонка": {"color": "#9933CC", "shape": "triangle"}
+            }
+
+            for device in self.devices:
+                device_lower = device.lower()
+                props = next(
+                    (v for k, v in device_types.items() if k in device_lower),
+                    {"color": "#666666", "shape": "dot"}
+                )
+                net.add_node(
+                    device,
+                    color=props["color"],
+                    shape=props["shape"],
+                    size=25,
+                    font={"size": 12}
+                )
+
+            # Добавляем соединения
+            for src, dst, proto, bw in self.connections:
+                net.add_edge(
+                    src,
+                    dst,
+                    label=f"{proto} {bw}Mbps",
+                    color=self._get_protocol_color(proto),
+                    width=2
+                )
+
+            # Сохраняем во временный файл
+            net.save_graph(temp_file)
+
+            # Проверяем создание файла
+            if not os.path.exists(temp_file):
+                raise RuntimeError("Не удалось создать файл визуализации")
+
+            # Переименовываем (чтобы избежать проблем с кэшированием)
+            os.rename(temp_file, output_file)
+
+            # Открываем в браузере
+            webbrowser.open(f"file://{output_file}")
+
+        except Exception as e:
+            messagebox.showerror(
+                "Ошибка визуализации",
+                f"Произошла ошибка:\n\n{str(e)}\n\n"
+                "Рекомендуемые действия:\n"
+                "1. Проверьте наличие устройств и соединений\n"
+                "2. Установите PyVis: pip install --upgrade pyvis\n"
+                "3. Проверьте права на запись в текущую директорию"
+            )
+
+    def _get_protocol_color(self, protocol):
+        """Возвращает цвет для разных протоколов"""
+        protocol = protocol.lower()
+        return {
+            "wi-fi": "#FF8800",
+            "zigbee": "#00CC66",
+            "bluetooth": "#9966FF",
+            "ethernet": "#333333"
+        }.get(protocol, "#AAAAAA")
     def add_device(self):
         device = self.device_entry.get()
         performance = self.performance_entry.get()
