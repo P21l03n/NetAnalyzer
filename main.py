@@ -1,3 +1,4 @@
+import json
 import time
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -7,61 +8,75 @@ import matplotlib
 matplotlib.use('TkAgg')  # Принудительно используем Tkinter-бэкенд
 import os
 import webbrowser
-from pyvis.network import Network
+import time
 from tkinter import messagebox
+from pyvis.network import Network
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
 
 
 class CiscoVisualizer:
     def __init__(self, devices, connections):
         """
-        Инициализация визуализатора Cisco-топологии
+        Улучшенный визуализатор сетевой топологии с функциями:
+        - Подсветка критических путей
+        - Экспорт в PNG
+        - Имитация трафика
 
-        :param devices: Список устройств (например, ["Роутер", "Умная колонка"])
-        :param connections: Список соединений в формате
-               [(device1, device2, protocol, bandwidth), ...]
+        :param devices: Список устройств ["Роутер", "Умная колонка"]
+        :param connections: Список соединений [(src, dst, proto, bw), ...]
         """
         self.devices = devices
         self.connections = connections
         self.net = self._initialize_network()
+        self.highlighted_paths = []
+        self.traffic_animation = False
 
     def _initialize_network(self):
-        """Настройка базовых параметров сети"""
-        return Network(
+        """Инициализация сети с настройками Cisco"""
+        net = Network(
             height="800px",
             width="100%",
-            bgcolor="#f0f0f0",  # Cisco-style background
-            font_color="#333333",
-            directed=False,
-            notebook=False
+            bgcolor="#f5f5f5",
+            font_color="#333",
+            notebook=False,
+            cdn_resources='remote'
         )
+        net.toggle_physics(True)
+        return net
 
     def _get_device_properties(self, device):
-        """Определяем иконки и цвета для разных типов устройств"""
+        """Определение свойств устройства по его типу"""
         device_props = {
             "роутер": {
                 "image": "https://img.icons8.com/color/48/router.png",
                 "color": "#0066CC",
-                "shape": "image"
+                "shape": "image",
+                "size": 30
             },
             "смартфон": {
                 "image": "https://img.icons8.com/color/48/iphone.png",
                 "color": "#33CC33",
-                "shape": "image"
+                "shape": "image",
+                "size": 25
             },
             "лампочка": {
                 "image": "https://img.icons8.com/color/48/light-on.png",
                 "color": "#FFCC00",
-                "shape": "image"
+                "shape": "image",
+                "size": 20
             },
             "розетка": {
                 "image": "https://img.icons8.com/color/48/electrical.png",
                 "color": "#CC3300",
-                "shape": "image"
+                "shape": "image",
+                "size": 20
             },
             "колонка": {
                 "image": "https://img.icons8.com/color/48/speaker.png",
                 "color": "#9933CC",
-                "shape": "image"
+                "shape": "image",
+                "size": 25
             }
         }
 
@@ -69,14 +84,24 @@ class CiscoVisualizer:
             if key in device.lower():
                 return props
 
-        # Дефолтные значения для неизвестных устройств
         return {
             "color": "#666666",
-            "shape": "box"
+            "shape": "box",
+            "size": 20
         }
 
-    def _add_devices(self):
-        """Добавление устройств с соответствующими иконками"""
+    def _get_protocol_style(self, protocol):
+        """Стили для разных типов протоколов"""
+        return {
+            "wi-fi": {"color": "#FF8800", "width": 3},
+            "zigbee": {"color": "#00CC66", "width": 2, "dashes": [5, 5]},
+            "bluetooth": {"color": "#9966FF", "width": 2},
+            "ethernet": {"color": "#333333", "width": 4}
+        }.get(protocol.lower(), {"color": "#AAAAAA", "width": 2})
+
+    def generate_topology(self):
+        """Генерация базовой топологии с устройствами и соединениями"""
+        # Добавление устройств
         for device in self.devices:
             props = self._get_device_properties(device)
             self.net.add_node(
@@ -84,112 +109,174 @@ class CiscoVisualizer:
                 shape=props["shape"],
                 image=props.get("image", ""),
                 color=props["color"],
-                size=25,
+                size=props["size"],
                 borderWidth=2,
-                font={"size": 12},
-                labelHighlightBold=True
+                font={"size": 12}
             )
 
-    def _add_connections(self):
-        """Добавление соединений с подписями"""
-        protocol_styles = {
-            "wi-fi": {"color": "#FF8800", "dashes": False},
-            "zigbee": {"color": "#00CC66", "dashes": [5, 5]},
-            "bluetooth": {"color": "#9966FF", "dashes": [3, 3]},
-            "ethernet": {"color": "#333333", "dashes": False}
-        }
-
+        # Добавление соединений
         for src, dst, proto, bw in self.connections:
-            style = protocol_styles.get(proto.lower(), {"color": "#AAAAAA"})
+            style = self._get_protocol_style(proto)
             self.net.add_edge(
                 src,
                 dst,
                 label=f"{proto.upper()} {bw}Mbps",
                 color=style["color"],
-                width=2,
+                width=style["width"],
                 dashes=style.get("dashes", False),
-                font={"size": 10},
-                smooth=False
+                font={"size": 10}
             )
 
-    def _configure_physics(self):
-        """Настройка физической модели (аналогично Cisco Packet Tracer)"""
-        self.net.toggle_physics(True)
-        self.net.set_options("""
-        {
-            "physics": {
-                "forceAtlas2Based": {
-                    "gravitationalConstant": -50,
-                    "centralGravity": 0.01,
-                    "springLength": 150,
-                    "damping": 0.4,
-                    "avoidOverlap": 0.8
-                },
-                "minVelocity": 0.75,
-                "solver": "forceAtlas2Based"
-            },
-            "nodes": {
-                "scaling": {
-                    "min": 20,
-                    "max": 30
-                }
-            }
-        }
-        """)
+        # Восстановление подсвеченных путей
+        for path, color, width in self.highlighted_paths:
+            self._apply_path_highlight(path, color, width)
 
-    def generate(self, filename="cisco_topology.html"):
-        """
-        Генерация и отображение топологии
-
-        :param filename: Имя выходного HTML-файла
-        :return: Путь к сохраненному файлу
-        """
-        try:
-            if not self.devices:
-                raise ValueError("Нет устройств для визуализации")
-            if not self.connections:
-                raise ValueError("Нет соединений между устройствами")
-
-            self._add_devices()
-            self._add_connections()
-            self._configure_physics()
-
-            # Очистка предыдущего файла
-            if os.path.exists(filename):
-                os.remove(filename)
-
-            # Сохранение и открытие
-            self.net.show(filename)
-            filepath = os.path.abspath(filename)
-            webbrowser.open(f"file://{filepath}")
-
-            return filepath
-
-        except Exception as e:
-            messagebox.showerror(
-                "Ошибка визуализации",
-                f"Не удалось создать топологию:\n{str(e)}\n\n"
-                "Проверьте:\n"
-                "1. Наличие устройств и соединений\n"
-                "2. Корректность данных\n"
-                "3. Доступ к интернету (для загрузки иконок)"
-            )
-            return None
+        return self
 
     def highlight_path(self, path, color="#FF0000", width=5):
         """
         Подсветка указанного пути в топологии
-
-        :param path: Список устройств пути (например, ["Роутер", "Смартфон"])
+        :param path: Список устройств ["Роутер", "Смартфон"]
         :param color: Цвет подсветки
         :param width: Толщина линии
         """
+        self._apply_path_highlight(path, color, width)
+        self.highlighted_paths.append((path, color, width))
+        return self
+
+    def _apply_path_highlight(self, path, color, width):
+        """Внутренний метод для подсветки пути"""
         for i in range(len(path) - 1):
-            edge = f"{path[i]}->{path[i + 1]}"
+            edge = f"{path[i]}-{path[i + 1]}"
             if edge in self.net.edges:
                 self.net.edges[edge]["color"] = color
                 self.net.edges[edge]["width"] = width
+                self.net.edges[edge]["shadow"] = True
 
+    def generate(self, filename="cisco_topology.html", auto_animate=False, animation_path=None):
+        """
+        Генерация топологии с возможностью автозапуска анимации
+        :param auto_animate: Автоматически запускать анимацию
+        :param animation_path: Путь для анимации (например, ["Роутер", "Смартфон"])
+        """
+        try:
+            # Генерируем базовую топологию
+            self.generate_topology()
+
+            # Настраиваем физику для плавной анимации
+            self.net.toggle_physics(True)
+            options = {
+                "physics": {
+                    "enabled": True,
+                    "stabilization": {
+                        "enabled": True,
+                        "iterations": 100,
+                        "updateInterval": 25
+                    },
+                    "barnesHut": {
+                        "gravitationalConstant": -8000,
+                        "centralGravity": 0.3,
+                        "springLength": 200,
+                        "springConstant": 0.04,
+                        "damping": 0.09,
+                        "avoidOverlap": 0.1
+                    }
+                }
+            }
+            self.net.set_options(options)
+
+            # Добавляем JavaScript для автоматической анимации
+            if auto_animate and animation_path:
+                self._add_animation_script(animation_path)
+
+            if os.path.exists(filename):
+                os.remove(filename)
+
+            self.net.show(filename)
+            return os.path.abspath(filename)
+
+        except Exception as e:
+            messagebox.showerror("Ошибка", str(e))
+            return None
+
+    def _add_animation_script(self, path):
+        """Добавляем JavaScript код для анимации"""
+        # Преобразуем путь в JavaScript-массив
+        js_path = str([str(device) for device in path])
+
+        animation_js = f"""
+        <script>
+        document.addEventListener('DOMContentLoaded', function() {{
+            // Ждем загрузки визуализации
+            setTimeout(function() {{
+                const path = {js_path};
+                animateSignal(path);
+            }}, 2000);
+
+            function animateSignal(path) {{
+                // Реализация анимации на JavaScript
+                const edges = network.body.data.edges;
+                const originalColors = {{}};
+
+                // Сохраняем оригинальные цвета
+                for (let i = 0; i < path.length - 1; i++) {{
+                    const edgeId = `${{path[i]}}->${{path[i + 1]}}`;
+                    const edge = edges.get(edgeId);
+                    if (edge) {{
+                        originalColors[edgeId] = edge.color;
+                    }}
+                }}
+
+                // Анимация (3 цикла)
+                let cycles = 0;
+                const animationInterval = setInterval(function() {{
+                    // Вперед
+                    for (let i = 0; i < path.length - 1; i++) {{
+                        const edgeId = `${{path[i]}}->${{path[i + 1]}}`;
+                        if (edges.get(edgeId)) {{
+                            edges.update({{
+                                id: edgeId,
+                                color: {{highlight: '#FF0000', hover: '#FF0000'}},
+                                width: 5
+                            }});
+                        }}
+                    }}
+
+                    // Обратно
+                    setTimeout(function() {{
+                        for (let i = 0; i < path.length - 1; i++) {{
+                            const edgeId = `${{path[i]}}->${{path[i + 1]}}`;
+                            if (edges.get(edgeId)) {{
+                                edges.update({{
+                                    id: edgeId,
+                                    color: originalColors[edgeId],
+                                    width: 2
+                                }});
+                            }}
+                        }}
+
+                        cycles++;
+                        if (cycles >= 3) clearInterval(animationInterval);
+                    }}, 500);
+                }}, 1000);
+            }}
+        }});
+        </script>
+        """
+        self.net.template = self.net.template.replace("</body>", f"{animation_js}</body>")
+    def show(self):
+        """Отображение топологии в браузере"""
+        output_file = "cisco_topology.html"
+
+        # Удаляем старый файл если есть
+        if os.path.exists(output_file):
+            os.remove(output_file)
+
+        # Генерируем и открываем
+        self.net.save_graph(output_file)
+        webbrowser.open(f"file://{os.path.abspath(output_file)}")
+
+        return output_file
 class NetworkApp:
     def __init__(self, root):
         self.root = root

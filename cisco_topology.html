@@ -282,8 +282,8 @@ function highlightFilter(filter) {
                   
 
                   // parsing and collecting nodes and edges from the python
-                  nodes = new vis.DataSet([{"color": "#0066CC", "font": {"color": "#333333"}, "id": "\u0440\u043e\u0443\u0442\u0435\u0440", "label": "\u0440\u043e\u0443\u0442\u0435\u0440", "shape": "box", "size": 25}, {"color": "#9933CC", "font": {"color": "#333333"}, "id": "\u043a\u043e\u043b\u043e\u043d\u043a\u0430", "label": "\u043a\u043e\u043b\u043e\u043d\u043a\u0430", "shape": "triangle", "size": 25}]);
-                  edges = new vis.DataSet([{"color": "#FF8800", "from": "\u0440\u043e\u0443\u0442\u0435\u0440", "label": "Wi-Fi 150.0Mbps", "to": "\u043a\u043e\u043b\u043e\u043d\u043a\u0430", "width": 2}]);
+                  nodes = new vis.DataSet([{"color": "#0066CC", "font": {"color": "#333333"}, "id": "\u0440\u043e\u0443\u0442\u0435\u0440", "label": "\u0440\u043e\u0443\u0442\u0435\u0440", "shape": "box", "size": 25}, {"color": "#FFCC00", "font": {"color": "#333333"}, "id": "\u043b\u0430\u043c\u043f\u043e\u0447\u043a\u0430", "label": "\u043b\u0430\u043c\u043f\u043e\u0447\u043a\u0430", "shape": "circle", "size": 25}]);
+                  edges = new vis.DataSet([{"color": "#FF8800", "from": "\u0440\u043e\u0443\u0442\u0435\u0440", "label": "Wi-Fi 100.0Mbps", "to": "\u043b\u0430\u043c\u043f\u043e\u0447\u043a\u0430", "width": 2}]);
 
                   nodeColors = {};
                   allNodes = nodes.get({ returnType: "Object" });
